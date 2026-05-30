@@ -5,12 +5,7 @@ import "react-datepicker/dist/react-datepicker.css";
 import { createTask } from "../services/taskService";
 import { showError, showSuccess } from "../utils/toastStyles";
 
-const CreateTask = ({
-  projectId,
-  members,
-  onClose,
-  onTaskCreated,
-}) => {
+const CreateTask = ({ projectId, members, onClose }) => {
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -43,18 +38,12 @@ const CreateTask = ({
 
         projectId,
 
-        startDate: formData.startDate
-          ? formData.startDate.toISOString()
-          : null,
+        startDate: formData.startDate ? formData.startDate.toISOString() : null,
 
-        endDate: formData.endDate
-          ? formData.endDate.toISOString()
-          : null,
+        endDate: formData.endDate ? formData.endDate.toISOString() : null,
       };
 
-      const newTask = await createTask(taskData);
-
-      onTaskCreated(newTask);
+      await createTask(taskData);
 
       showSuccess("Task Created");
 
@@ -62,10 +51,7 @@ const CreateTask = ({
     } catch (error) {
       console.error("Error creating task:", error);
 
-      showError(
-        error.response?.data?.message ||
-          "Failed to create task",
-      );
+      showError(error.response?.data?.message || "Failed to create task");
     } finally {
       setLoading(false);
     }
@@ -73,14 +59,12 @@ const CreateTask = ({
 
   return (
     <div className="relative overflow-hidden text-white">
-
       {/* Glow Effects */}
       <div className="absolute -top-24 -right-24 w-48 h-48 bg-purple-500/15 blur-3xl rounded-full" />
       <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-pink-500/10 blur-3xl rounded-full" />
 
       {/* Content */}
       <div className="relative z-10">
-
         {/* Header */}
         <h2 className="text-3xl font-bold mb-2 bg-gradient-to-r from-purple-400 to-pink-500 text-transparent bg-clip-text">
           Create Task
@@ -91,16 +75,10 @@ const CreateTask = ({
         </p>
 
         {/* Form */}
-        <form
-          onSubmit={handleSubmit}
-          className="space-y-5"
-        >
-
+        <form onSubmit={handleSubmit} className="space-y-5">
           {/* Title */}
           <div>
-            <label className="block text-sm text-gray-300 mb-1">
-              Title
-            </label>
+            <label className="block text-sm text-gray-300 mb-1">Title</label>
 
             <input
               type="text"
@@ -161,9 +139,7 @@ const CreateTask = ({
 
           {/* Priority */}
           <div>
-            <label className="block text-sm text-gray-300 mb-1">
-              Priority
-            </label>
+            <label className="block text-sm text-gray-300 mb-1">Priority</label>
 
             <select
               name="priority"
@@ -187,9 +163,7 @@ const CreateTask = ({
 
           {/* Status */}
           <div>
-            <label className="block text-sm text-gray-300 mb-1">
-              Status
-            </label>
+            <label className="block text-sm text-gray-300 mb-1">Status</label>
 
             <select
               name="status"
@@ -201,10 +175,7 @@ const CreateTask = ({
                 To-Do
               </option>
 
-              <option
-                value="in-progress"
-                className="bg-[#0b0b17]"
-              >
+              <option value="in-progress" className="bg-[#0b0b17]">
                 In Progress
               </option>
 
@@ -216,7 +187,6 @@ const CreateTask = ({
 
           {/* Dates */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
             {/* Start Date */}
             <div>
               <label className="block text-sm text-gray-300 mb-1">
@@ -262,7 +232,6 @@ const CreateTask = ({
 
           {/* Buttons */}
           <div className="flex justify-end gap-3 pt-3">
-
             {/* Cancel */}
             <button
               type="button"
@@ -280,7 +249,6 @@ const CreateTask = ({
             >
               {loading ? "Creating..." : "Create Task"}
             </button>
-
           </div>
         </form>
       </div>

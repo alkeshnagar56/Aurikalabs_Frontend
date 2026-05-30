@@ -18,7 +18,7 @@ import { logoutUser } from "../services/authService";
 import { showError } from "../utils/toastStyles";
 
 const Navbar = () => {
-  const { user } = useContext(AuthContext);
+  const { user, logout } = useContext(AuthContext);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -27,8 +27,7 @@ const Navbar = () => {
 
   const handleLogout = async () => {
     try {
-      await logoutUser();
-
+      await logout();
       navigate("/login");
 
       setMenuOpen(false);

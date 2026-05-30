@@ -2,8 +2,8 @@
 import { io } from "socket.io-client";
 
 // comment below url line to deploy and uncomment next line
-// const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:5000";
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "https://aurikalabs-backend.onrender.com";
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:5000";
+// const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "https://aurikalabs-backend.onrender.com";
 
 
 let socket = null;

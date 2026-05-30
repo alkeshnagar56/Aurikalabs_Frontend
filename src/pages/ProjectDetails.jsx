@@ -856,9 +856,6 @@ const ProjectDetails = () => {
                         projectId={project._id}
                         members={project.members}
                         onClose={() => setIsTaskModalOpen(false)}
-                        onTaskCreated={(task) =>
-                          setTasks((prev) => [...prev, task])
-                        }
                       />
                     )}
                   </div>

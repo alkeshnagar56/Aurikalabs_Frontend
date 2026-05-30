@@ -1,22 +1,18 @@
 import React, { useContext, useState } from "react";
-import {
-  Pencil,
-  Mail,
-  CalendarDays,
-  LogOut,
-  Sparkles,
-} from "lucide-react";
+import { Pencil, Mail, CalendarDays, LogOut, Sparkles } from "lucide-react";
 
 import { AuthContext } from "../context/AuthContext";
 import UpdateProfile from "../models/UpdateProfile";
 
 import { updateUserProfile } from "../services/authService";
 import { showError, showSuccess } from "../utils/toastStyles";
+import { useNavigate } from "react-router-dom";
 
 const Profile = () => {
   const { user, setUser, logout } = useContext(AuthContext);
 
   const [isUpdateOpen, setIsUpdateOpen] = useState(false);
+  const navigate = useNavigate();
 
   const handleUpdate = async (updatedData) => {
     try {
@@ -31,10 +27,14 @@ const Profile = () => {
     } catch (err) {
       console.log(err);
 
-      showError(
-        err.response?.data?.message || "Failed to update profile",
-      );
+      showError(err.response?.data?.message || "Failed to update profile");
     }
+  };
+
+  const handleLogout = async () => {
+    await logout();
+
+    navigate("/login");
   };
 
   if (!user) {
@@ -45,26 +45,20 @@ const Profile = () => {
             Not Logged In
           </h2>
 
-          <p className="text-gray-400">
-            Please login to access your profile.
-          </p>
+          <p className="text-gray-400">Please login to access your profile.</p>
         </div>
       </div>
     );
   }
 
-  const joinedDate = new Date(user.createdAt).toLocaleDateString(
-    "en-GB",
-    {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    },
-  );
+  const joinedDate = new Date(user.createdAt).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
 
   return (
     <div className="min-h-screen bg-[#0b0b17] text-white px-4 py-10 relative overflow-hidden">
-      
       {/* Background Glow */}
       <div className="absolute top-[-120px] left-[-120px] w-[300px] h-[300px] bg-purple-600/20 blur-[120px] rounded-full" />
 
@@ -73,7 +67,6 @@ const Profile = () => {
       {/* Main Profile Card */}
       <div className="relative z-10 max-w-md mx-auto">
         <div className="relative overflow-hidden bg-white/5 backdrop-blur-2xl border border-white/10 rounded-[32px] shadow-[0_0_50px_rgba(168,85,247,0.12)] p-8">
-
           {/* Glow */}
           <div className="absolute -top-20 -right-20 w-40 h-40 bg-purple-500/10 blur-3xl rounded-full" />
 
@@ -89,7 +82,6 @@ const Profile = () => {
 
           {/* Header */}
           <div className="relative z-10 text-center">
-            
             {/* Avatar */}
             <div className="relative w-28 h-28 mx-auto rounded-full bg-gradient-to-br from-purple-500 via-pink-500 to-purple-600 flex items-center justify-center text-4xl font-bold shadow-lg shadow-purple-500/30">
               {user.name?.charAt(0).toUpperCase()}
@@ -112,7 +104,6 @@ const Profile = () => {
 
           {/* User Details */}
           <div className="relative z-10 mt-8 space-y-4">
-            
             {/* Email */}
             <div className="flex items-center gap-4 bg-white/[0.03] border border-white/5 rounded-2xl p-4">
               <div className="w-11 h-11 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-300">
@@ -124,9 +115,7 @@ const Profile = () => {
                   Email Address
                 </p>
 
-                <p className="text-sm text-gray-200 mt-1">
-                  {user.email}
-                </p>
+                <p className="text-sm text-gray-200 mt-1">{user.email}</p>
               </div>
             </div>
 
@@ -141,9 +130,7 @@ const Profile = () => {
                   Joined On
                 </p>
 
-                <p className="text-sm text-gray-200 mt-1">
-                  {joinedDate}
-                </p>
+                <p className="text-sm text-gray-200 mt-1">{joinedDate}</p>
               </div>
             </div>
           </div>
@@ -151,11 +138,10 @@ const Profile = () => {
           {/* Logout Button */}
           <div className="relative z-10 mt-8">
             <button
-              onClick={logout}
+              onClick={handleLogout}
               className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-300 hover:bg-red-500/20 hover:text-red-200 transition-all duration-300"
             >
               <LogOut size={18} />
-
               Logout
             </button>
           </div>
@@ -165,7 +151,6 @@ const Profile = () => {
       {/* Update Profile Modal */}
       {isUpdateOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-          
           {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/70 backdrop-blur-md"

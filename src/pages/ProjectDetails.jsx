@@ -1,69 +1,119 @@
 // src/pages/ProjectDetails.jsx
+
 import React, { useContext, useEffect, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
-import { Trash } from "lucide-react";
+import { getSocket } from "../utils/socket";
+
+import {
+  Trash,
+  Users,
+  ClipboardList,
+  Info,
+  Calendar,
+  Sparkles,
+  Plus,
+  ArrowRight,
+  FolderKanban,
+  LayoutDashboard,
+  Activity,
+  CheckCircle2,
+  Pencil,
+  MoveRight,
+  Trash2,
+} from "lucide-react";
+
+import KanbanBoard from "../components/KanbanBoard";
 
 import { AuthContext } from "../context/AuthContext";
+
 import {
   fetchProjectById,
   removeMemberFromProject,
 } from "../services/projectService";
+
+import { fetchProjectActivities } from "../services/activity";
+
 import { fetchTasks, deleteTask } from "../services/taskService";
+
+import {
+  createComment,
+  fetchComments,
+  deleteComment,
+} from "../services/commentService";
 
 import UpdateProject from "../models/UpdateProject";
 import AddMember from "../models/AddMember";
 import ConfirmRemoveMember from "../models/ConfirmRemoveMember";
 import CreateTask from "../models/CreateTask";
 import ConfirmTaskDelete from "../models/ConfirmTaskDelete";
+
 import { showError, showSuccess } from "../utils/toastStyles";
+
 import { canEdit } from "../utils/permissions";
+
 import ChatButton from "../components/ChatButton";
 
 const ProjectDetails = () => {
   const { user, loading } = useContext(AuthContext);
+
   const { id } = useParams();
   const navigate = useNavigate();
+  const socket = getSocket();
 
-  // Data
   const [project, setProject] = useState(null);
-  const [tasks, setTasks] = useState(null);
+  const [tasks, setTasks] = useState([]);
+  const [activities, setActivities] = useState([]);
 
-  // UI state
   const [loadingCompo, setLoadingCompo] = useState(true);
   const [error, setError] = useState(null);
-  const [activeTab, setActiveTab] = useState("tasks"); // default tab
 
-  // Modals
+  const [activeTab, setActiveTab] = useState("tasks");
+
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
+
   const [isMemberModalOpen, setIsMemberModalOpen] = useState(false);
+
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+
   const [isTaskDeleteOpen, setTaskDeleteOpen] = useState(false);
 
-  // Selections
   const [selectedMember, setSelectedMember] = useState(null);
+
   const [selectedTask, setSelectedTask] = useState(null);
 
-  // Redirect if no user
+  const [comments, setComments] = useState([]);
+
+  const [commentInput, setCommentInput] = useState("");
+
+  const [commentsLoading, setCommentsLoading] = useState(false);
+
   useEffect(() => {
     if (!loading && user === null) {
       navigate("/signup");
     }
   }, [user, navigate]);
 
-  // Fetch project + tasks
   const fetchProject = async () => {
     try {
       const data = await fetchProjectById(id);
+
       setProject(data);
 
       const taskList = await fetchTasks(id);
+
       setTasks(taskList);
+
+      const activityList = await fetchProjectActivities(id);
+
+      setActivities(activityList);
     } catch (err) {
-      console.error("Error fetching project:", err.response.data.message);
-      if (err.response.data.message === "Unauthorized access") {
+      if (err.response?.data?.message === "Unauthorized access") {
         showError("Please login");
-        setError("Failed to load project details. please login first . . .");
+
+        setError("Failed to load project details. Please login first...");
+
         navigate("/login");
       } else {
         setError("Failed to load project details.");
@@ -77,384 +127,789 @@ const ProjectDetails = () => {
     fetchProject();
   }, [id]);
 
-  // Handlers
+  // Realtime task sync
+  useEffect(() => {
+    if (!id) return;
+
+    // join project room
+    socket.emit("joinProject", {
+      projectId: id,
+    });
+
+    // task created
+    socket.on("taskCreated", (task) => {
+      if (!task || !task._id) return;
+
+      setTasks((prev = []) => {
+        const cleanPrev = prev.filter(Boolean);
+
+        const exists = cleanPrev.some((t) => t?._id === task._id);
+
+        if (exists) {
+          return cleanPrev;
+        }
+
+        return [...cleanPrev, task];
+      });
+    });
+
+    // task updated
+    socket.on("taskUpdated", (updatedTask) => {
+      if (!updatedTask || !updatedTask._id) return;
+
+      setTasks((prev = []) =>
+        prev
+          .filter(Boolean)
+          .map((t) => (t?._id === updatedTask._id ? updatedTask : t)),
+      );
+    });
+
+    // task deleted
+    socket.on("taskDeleted", ({ taskId }) => {
+      if (!taskId) return;
+
+      setTasks((prev = []) => prev.filter((t) => t && t._id !== taskId));
+    });
+
+    // activity created
+    socket.on("activityCreated", (activity) => {
+      if (!activity || !activity._id) return;
+
+      setActivities((prev = []) => {
+        const cleanPrev = prev.filter(Boolean);
+
+        const exists = cleanPrev.some((a) => a?._id === activity._id);
+
+        if (exists) {
+          return cleanPrev;
+        }
+
+        return [activity, ...cleanPrev];
+      });
+    });
+
+    return () => {
+      socket.off("taskCreated");
+      socket.off("taskUpdated");
+      socket.off("taskDeleted");
+      socket.off("activityCreated");
+    };
+  }, [id]);
+
   const handleRemoveMember = async () => {
     if (!selectedMember) return;
+
     try {
       await removeMemberFromProject(project._id, selectedMember.email);
+
       const updatedMembers = project.members.filter(
-        (member) => member.email !== selectedMember.email
+        (member) => member.email !== selectedMember.email,
       );
-      setProject({ ...project, members: updatedMembers });
+
+      setProject({
+        ...project,
+        members: updatedMembers,
+      });
+
       setIsDeleteModalOpen(false);
+
       showSuccess("Member removed");
+
       setSelectedMember(null);
-    } catch (error) {
-      console.error("Error removing member:", error);
+    } catch {
       showError("Failed to remove member. Please try again.");
     }
   };
 
   const handleDeleteTask = async () => {
     if (!selectedTask) return;
+
     try {
       await deleteTask(selectedTask);
-      setTasks((prevTasks) =>
-        prevTasks.filter((task) => task._id !== selectedTask)
-      );
+
+      setTasks((prev) => prev.filter((task) => task._id !== selectedTask));
+
       setTaskDeleteOpen(false);
+
       showSuccess("Task deleted");
+
       setSelectedTask(null);
-    } catch (error) {
-      console.error("Error deleting task:", error);
-      showError("Failed to delete task. Please try again.");
+    } catch {
+      showError("Failed to delete task.");
     }
   };
 
-  // Early returns
+  // Loading State
   if (loadingCompo) {
-    return <p className="p-6 text-gray-500">Loading project details...</p>;
-  }
-  if (error) {
-    return <p className="p-6 text-red-500">{error}</p>;
-  }
-  if (!project) {
-    return <p className="p-6 text-gray-500">No project found.</p>;
-  }
-
-  // Tab components
-  const TasksComponent = () => (
-    <>
-      <div className="flex flex-wrap justify-between mb-4 gap-3 border-b-2 p-4 border-gray-200 rounded-2xl shadow">
-        <h1 className="font-bold text-gray-700 text-xl">📋 Tasks</h1>
-        <button
-          onClick={() => setIsTaskModalOpen(true)}
-          className="px-2 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
-        >
-          + Add Task
-        </button>
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#0b0b17] text-gray-400">
+        Loading project details...
       </div>
+    );
+  }
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {tasks.length === 0 ? (
-          <p className="text-gray-500 col-span-2 text-center py-10">
-            No tasks yet. Click <span className="font-semibold">+ Create</span>{" "}
-            to start one. It would help you to achieve your goal
-          </p>
-        ) : (
-          tasks.map((task) => (
-            <div
-              key={task._id}
-              className="relative p-6 bg-white rounded-2xl shadow hover:shadow-lg transition duration-300 border border-gray-200"
-            >
-              {/* Delete Button */}
-              {canEdit(user, task, project) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedTask(task._id);
-                    setTaskDeleteOpen(true);
-                  }}
-                  className="absolute top-3 right-3 p-1 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-800 transition"
-                  title="Delete Task"
-                  aria-label="Delete Task"
-                >
-                  <Trash size={18} />
-                </button>
-              )}
+  // Error State
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#0b0b17] text-red-400">
+        {error}
+      </div>
+    );
+  }
 
-              {/* Task Card */}
-              <Link to={`/project/task/${task._id}`} className="block">
-                <h2 className="text-xl font-semibold text-gray-900">
-                  {task.title}
-                </h2>
-                <p className="text-gray-600 mt-2 whitespace-pre-line line-clamp-2">
-                  {task.description}
-                </p>
-                <div className="flex justify-between text-gray-600 mt-3 text-[10px]">
-                  <p>
-                    <span className="text-black">status: </span>
-                    {task.status}
+  // No Project
+  if (!project) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#0b0b17] text-gray-400">
+        No project found.
+      </div>
+    );
+  }
+
+  const tabs = [
+    {
+      key: "tasks",
+      label: "Tasks",
+      icon: ClipboardList,
+    },
+
+    {
+      key: "board",
+      label: "Board",
+      icon: LayoutDashboard,
+    },
+
+    {
+      key: "members",
+      label: "Members",
+      icon: Users,
+    },
+
+    {
+      key: "activity",
+      label: "Activity",
+      icon: Sparkles,
+    },
+
+    {
+      key: "details",
+      label: "Details",
+      icon: Info,
+    },
+  ];
+
+  const getActivityIcon = (type) => {
+    switch (type) {
+      case "TASK_CREATED":
+        return <CheckCircle2 className="w-4 h-4 text-green-400" />;
+
+      case "TASK_UPDATED":
+        return <Pencil className="w-4 h-4 text-blue-400" />;
+
+      case "TASK_MOVED":
+        return <MoveRight className="w-4 h-4 text-purple-400" />;
+
+      case "TASK_DELETED":
+        return <Trash2 className="w-4 h-4 text-red-400" />;
+
+      default:
+        return <Activity className="w-4 h-4 text-gray-400" />;
+    }
+  };
+
+  const getRelativeTime = (date) => {
+    const now = new Date();
+    const seconds = Math.floor((now - new Date(date)) / 1000);
+
+    if (seconds < 60) return "Just now";
+
+    const minutes = Math.floor(seconds / 60);
+
+    if (minutes < 60) {
+      return `${minutes} min ago`;
+    }
+
+    const hours = Math.floor(minutes / 60);
+
+    if (hours < 24) {
+      return `${hours} hr ago`;
+    }
+
+    const days = Math.floor(hours / 24);
+
+    return `${days} day ago`;
+  };
+
+  return (
+    <div className="min-h-screen bg-[#0b0b17] text-white relative overflow-hidden px-4 md:px-6 py-8">
+      {/* Background Glow */}
+      <div className="absolute w-[350px] h-[350px] bg-purple-600/20 blur-[120px] top-[-120px] left-[-100px]" />
+      <div className="absolute w-[350px] h-[350px] bg-pink-500/20 blur-[120px] bottom-[-120px] right-[-100px]" />
+
+      <div className="relative z-10 max-w-7xl mx-auto">
+        {/* HERO CARD */}
+        <div className="relative overflow-hidden rounded-[32px] border border-white/10 bg-white/[0.04] backdrop-blur-2xl p-8 shadow-2xl mb-8">
+          {/* Glow */}
+          <div className="absolute -top-24 right-0 w-72 h-72 bg-purple-500/10 blur-[120px]" />
+
+          {/* Top Badge */}
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/10 bg-white/5 text-xs text-purple-300 mb-5">
+            <Sparkles className="w-3.5 h-3.5" />
+            Active Workspace
+          </div>
+
+          {/* Main Content */}
+          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-8">
+            {/* Left */}
+            <div className="flex-1">
+              <div className="flex items-start gap-5">
+                {/* Icon */}
+                <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 border border-white/10 flex items-center justify-center shrink-0">
+                  <FolderKanban className="w-8 h-8 text-purple-300" />
+                </div>
+
+                {/* Info */}
+                <div>
+                  <h1 className="text-3xl md:text-5xl font-bold leading-tight bg-gradient-to-r from-white via-purple-200 to-pink-300 text-transparent bg-clip-text">
+                    {project.title}
+                  </h1>
+
+                  <p className="text-gray-400 mt-4 max-w-3xl leading-relaxed text-sm md:text-base">
+                    {project.description ||
+                      "No description added for this project."}
                   </p>
-                  <p className=" ">
-                    {task.assignedTo.name}{" "}
-                    <span className="text-gray-400">
-                      ({task.assignedTo.email})
-                    </span>
+
+                  {/* Stats */}
+                  <div className="flex flex-wrap gap-3 mt-6">
+                    <div className="px-4 py-2 rounded-2xl bg-white/5 border border-white/10 text-sm text-gray-300">
+                      👥 {project.members?.length || 0} Members
+                    </div>
+
+                    <div className="px-4 py-2 rounded-2xl bg-white/5 border border-white/10 text-sm text-gray-300">
+                      📋 {tasks?.length || 0} Tasks
+                    </div>
+
+                    <div className="px-4 py-2 rounded-2xl bg-white/5 border border-white/10 text-sm text-gray-300 capitalize">
+                      🚀 {project.status || "Active"}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Actions */}
+            {canEdit(user, project) && (
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => setIsProjectModalOpen(true)}
+                  className="z-10 px-5 py-3 rounded-2xl bg-gradient-to-r from-purple-500 to-pink-500 font-medium hover:scale-[1.03] active:scale-[0.98] transition-all duration-300 shadow-lg shadow-purple-500/20"
+                >
+                  Edit Project
+                </button>
+
+                <button
+                  onClick={() => setIsTaskModalOpen(true)}
+                  className="z-10 px-5 py-3 rounded-2xl bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all duration-300"
+                >
+                  Create Task
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex flex-wrap gap-3 mb-6">
+          {tabs.map((tab) => {
+            const Icon = tab.icon;
+
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`flex items-center gap-2 px-5 py-3 rounded-2xl border transition-all duration-300 ${
+                  activeTab === tab.key
+                    ? "bg-gradient-to-r from-purple-500 to-pink-500 border-transparent text-white shadow-lg shadow-purple-500/20"
+                    : "bg-white/5 border-white/10 text-gray-400 hover:bg-white/10 hover:text-white"
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* CONTENT CARD */}
+        <div className="rounded-[32px] border border-white/10 bg-white/[0.04] backdrop-blur-2xl p-6 md:p-8 shadow-2xl">
+          {/* TASKS TAB */}
+          {activeTab === "tasks" && (
+            <>
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+                <div>
+                  <h2 className="text-2xl font-semibold text-white">
+                    Project Tasks
+                  </h2>
+
+                  <p className="text-gray-400 mt-1">
+                    Manage and track all project tasks.
                   </p>
                 </div>
-              </Link>
-            </div>
-          ))
-        )}
-      </div>
-    </>
-  );
 
-  const MembersComponent = () => (
-    <div className="bg-white p-4 rounded-xl">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-semibold text-gray-800">Members</h2>
-        <button
-          onClick={() => setIsMemberModalOpen(true)}
-          className="px-2 py-1 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
-        >
-          + Add Member
-        </button>
-      </div>
-
-      {project.members.length > 0 ? (
-        <ul className="space-y-2">
-          {project.members.map((member) => (
-            <li
-              key={member._id}
-              className="flex justify-between items-center border-b border-gray-200 pb-2"
-            >
-              <div>
-                <span className="font-medium">{member.name}</span>{" "}
-                <span className="text-sm text-gray-600">({member.email})</span>
-              </div>
-              {canEdit(user, project) && (
                 <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedMember(member);
-                    setIsDeleteModalOpen(true);
-                  }}
-                  className="p-1 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-800 transition"
-                  title="Remove Member"
-                  aria-label="Remove Member"
+                  onClick={() => setIsTaskModalOpen(true)}
+                  className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-purple-500 to-pink-500 hover:scale-[1.03] transition-all duration-300"
                 >
-                  <Trash size={16} />
+                  <Plus className="w-4 h-4" />
+                  Add Task
                 </button>
+              </div>
+
+              {/* Tasks Grid */}
+              {tasks.length === 0 ? (
+                <div className="text-center py-20 border border-dashed border-white/10 rounded-3xl bg-white/[0.02]">
+                  <ClipboardList className="w-14 h-14 text-gray-600 mx-auto mb-4" />
+
+                  <h3 className="text-xl font-semibold text-white mb-2">
+                    No tasks yet
+                  </h3>
+
+                  <p className="text-gray-400">
+                    Create your first task to get started.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
+                  {tasks.map((task) => (
+                    <div
+                      key={task._id}
+                      className="group relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] hover:border-purple-500/20 transition-all duration-300 hover:-translate-y-1"
+                    >
+                      {/* Glow */}
+                      <div className="absolute -top-10 -right-10 w-32 h-32 bg-purple-500/10 blur-3xl opacity-0 group-hover:opacity-100 transition duration-500" />
+
+                      <div className="relative p-6">
+                        {/* Delete */}
+                        {canEdit(user, task, project) && (
+                          <button
+                            onClick={() => {
+                              setSelectedTask(task._id);
+
+                              setTaskDeleteOpen(true);
+                            }}
+                            className="absolute top-4 right-4 p-2 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition"
+                          >
+                            <Trash size={15} />
+                          </button>
+                        )}
+
+                        <Link to={`/project/task/${task._id}`}>
+                          <h3 className="text-xl font-semibold text-white mb-3 line-clamp-1">
+                            {task.title}
+                          </h3>
+
+                          <p className="text-gray-400 leading-relaxed line-clamp-3 min-h-[72px]">
+                            {task.description || "No description available."}
+                          </p>
+
+                          {/* Footer */}
+                          <div className="mt-6 pt-5 border-t border-white/5 flex items-center justify-between">
+                            <span className="px-3 py-1 rounded-full text-xs bg-purple-500/10 text-purple-300 border border-purple-500/20 capitalize">
+                              {task.status}
+                            </span>
+
+                            <div className="flex items-center gap-2 text-sm text-gray-400 group-hover:text-white transition">
+                              Open
+                              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                            </div>
+                          </div>
+                        </Link>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="text-gray-500">No members assigned.</p>
-      )}
-    </div>
-  );
+            </>
+          )}
 
-  const MoreDetails = () => (
-    <>
-      {/* Project Info */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        <div className="bg-white p-4 rounded-xl shadow border">
-          <h2 className="text-lg font-semibold text-gray-800 mb-2">Details</h2>
-          <p>
-            <span className="font-medium">Status:</span>{" "}
-            <span className="capitalize">{project.status}</span>
-          </p>
-          <p>
-            <span className="font-medium">Start Date:</span>{" "}
-            {new Date(project.startDate).toLocaleDateString()}
-          </p>
-          <p>
-            <span className="font-medium">End Date:</span>{" "}
-            {new Date(project.endDate).toLocaleDateString()}
-          </p>
-          <p>
-            <span className="font-medium">Created At:</span>{" "}
-            {new Date(project.createdAt).toLocaleString()}
-          </p>
+          {/* BOARD TAB */}
+          {activeTab === "board" && (
+            <KanbanBoard tasks={tasks} setTasks={setTasks} project={project} />
+          )}
+
+          {/* MEMBERS TAB */}
+          {activeTab === "members" && (
+            <>
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+                <div>
+                  <h2 className="text-2xl font-semibold">Team Members</h2>
+
+                  <p className="text-gray-400 mt-1">
+                    Collaborators working on this project.
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => setIsMemberModalOpen(true)}
+                  className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-purple-500 to-pink-500 hover:scale-[1.03] transition-all duration-300"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Member
+                </button>
+              </div>
+
+              {/* Members */}
+              <div className="grid md:grid-cols-2 gap-5">
+                {project.members.map((m) => (
+                  <div
+                    key={m._id}
+                    className="flex items-center justify-between p-5 rounded-2xl bg-white/[0.03] border border-white/10 hover:border-purple-500/20 transition"
+                  >
+                    <div className="flex items-center gap-4">
+                      {/* Avatar */}
+                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 border border-white/10 flex items-center justify-center text-lg font-semibold text-purple-300">
+                        {m.name?.charAt(0)}
+                      </div>
+
+                      <div>
+                        <h3 className="font-medium text-white">{m.name}</h3>
+
+                        <p className="text-sm text-gray-400">{m.email}</p>
+                      </div>
+                    </div>
+
+                    {canEdit(user, project) && (
+                      <button
+                        onClick={() => {
+                          setSelectedMember(m);
+
+                          setIsDeleteModalOpen(true);
+                        }}
+                        className="p-2 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition"
+                      >
+                        <Trash size={15} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* ACTIVITY TAB */}
+
+          {activeTab === "activity" && (
+            <>
+              {/* Header */}
+
+              <div className="flex items-center justify-between mb-8">
+                <div>
+                  <h2 className="text-3xl font-bold bg-gradient-to-r from-white to-purple-200 bg-clip-text text-transparent">
+                    Activity Timeline
+                  </h2>
+
+                  <p className="text-gray-400 mt-2">
+                    Realtime project collaboration and updates.
+                  </p>
+                </div>
+
+                <div className="hidden md:flex items-center gap-2 px-4 py-2 rounded-2xl border border-white/10 bg-white/[0.03] text-sm text-gray-400">
+                  <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                  Live Feed
+                </div>
+              </div>
+
+              {/* Empty State */}
+
+              {activities.length === 0 ? (
+                <div className="text-center py-24 rounded-[32px] border border-dashed border-white/10 bg-white/[0.02]">
+                  <Sparkles className="w-14 h-14 text-gray-600 mx-auto mb-5" />
+
+                  <h3 className="text-2xl font-semibold text-white mb-3">
+                    No activity yet
+                  </h3>
+
+                  <p className="text-gray-400 max-w-md mx-auto">
+                    Team actions and project updates will appear here in
+                    realtime.
+                  </p>
+                </div>
+              ) : (
+                <div className="relative">
+                  {/* Timeline Line */}
+
+                  <div className="absolute left-6 top-0 bottom-0 w-px bg-gradient-to-b from-purple-500/40 via-white/10 to-transparent" />
+
+                  <div className="space-y-6">
+                    {activities.map((activity) => (
+                      <div
+                        key={activity._id}
+                        className="group relative flex gap-5"
+                      >
+                        {/* Timeline Dot */}
+
+                        <div className="relative z-10 mt-1">
+                          <div className="w-12 h-12 rounded-2xl border border-white/10 bg-[#111827] flex items-center justify-center shadow-lg shadow-black/30">
+                            {getActivityIcon(activity.type)}
+                          </div>
+                        </div>
+
+                        {/* Card */}
+
+                        <div className="flex-1 rounded-[28px] border border-white/10 bg-white/[0.03] hover:bg-white/[0.05] hover:border-purple-500/20 transition-all duration-300 overflow-hidden">
+                          {/* Glow */}
+
+                          <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition duration-500 pointer-events-none">
+                            <div className="absolute -top-20 right-0 w-52 h-52 bg-purple-500/10 blur-3xl" />
+                          </div>
+
+                          <div className="relative p-5 md:p-6">
+                            <div className="flex items-start justify-between gap-4">
+                              {/* Left */}
+
+                              <div className="flex items-start gap-4 min-w-0">
+                                {/* Avatar */}
+
+                                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-semibold shrink-0">
+                                  {activity.userId?.name
+                                    ?.charAt(0)
+                                    ?.toUpperCase() || "U"}
+                                </div>
+
+                                {/* Content */}
+
+                                <div className="min-w-0">
+                                  <p className="text-gray-100 leading-relaxed text-sm md:text-base">
+                                    {activity.message}
+                                  </p>
+
+                                  <div className="flex items-center gap-3 mt-3 flex-wrap">
+                                    <span className="text-xs text-gray-500">
+                                      {getRelativeTime(activity.createdAt)}
+                                    </span>
+
+                                    <span className="w-1 h-1 rounded-full bg-gray-600" />
+
+                                    <span className="text-xs text-gray-500">
+                                      {new Date(
+                                        activity.createdAt,
+                                      ).toLocaleTimeString([], {
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      })}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Right Badge */}
+
+                              <div className="hidden sm:flex px-3 py-1 rounded-full border border-white/10 bg-white/[0.03] text-xs text-gray-400 shrink-0">
+                                {activity.type
+                                  ?.replaceAll("_", " ")
+                                  ?.toLowerCase()}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* DETAILS TAB */}
+          {activeTab === "details" && (
+            <div className="grid lg:grid-cols-2 gap-6">
+              {/* Left */}
+              <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-6">
+                <h2 className="text-xl font-semibold mb-6">
+                  Project Information
+                </h2>
+
+                <div className="space-y-5">
+                  <div className="flex items-center gap-4">
+                    <div className="w-11 h-11 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center">
+                      <Calendar className="w-5 h-5 text-purple-300" />
+                    </div>
+
+                    <div>
+                      <p className="text-sm text-gray-400">Start Date</p>
+
+                      <p className="text-white font-medium">
+                        {new Date(project.startDate).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    <div className="w-11 h-11 rounded-2xl bg-pink-500/10 border border-pink-500/20 flex items-center justify-center">
+                      <Info className="w-5 h-5 text-pink-300" />
+                    </div>
+
+                    <div>
+                      <p className="text-sm text-gray-400">Status</p>
+
+                      <p className="capitalize text-white font-medium">
+                        {project.status}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right */}
+              <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-6">
+                <h2 className="text-xl font-semibold mb-6">Project Owner</h2>
+
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 border border-white/10 flex items-center justify-center text-xl font-semibold text-purple-300">
+                    {project.createdBy?.name?.charAt(0)}
+                  </div>
+
+                  <div>
+                    <p className="text-lg font-medium text-white">
+                      {project.createdBy?.name}
+                    </p>
+
+                    <p className="text-gray-400">{project.createdBy?.email}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
-        <div className="bg-white p-4 rounded-xl shadow border">
-          <h2 className="text-lg font-semibold text-gray-800 mb-2">
-            Created By
-          </h2>
-          <p className="font-medium">{project.createdBy.name}</p>
-          <p className="text-gray-600">{project.createdBy.email}</p>
-        </div>
+        {/* Chat Button */}
+        <ChatButton
+          conversationId={id}
+          conversationType={"project"}
+          Name={project.title}
+          members={project.members}
+        />
       </div>
-    </>
-  );
-  return (
-    <div className="p-6">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-gray-800">{project.title}</h1>
-        {canEdit(user, project) && (
-          <button
-            onClick={() => setIsProjectModalOpen(true)}
-            className="px-2 py-1 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
-          >
-            Edit Project
-          </button>
-        )}
-      </div>
 
-      {/* Description */}
-      <p className="text-gray-600 mb-6">{project.description}</p>
-
-      {/* Tabs */}
-      <div>
-        <div className="flex justify-around gap-1 shadow rounded-xl mb-2 text-center font-bold">
-          <button
-            onClick={() => setActiveTab("tasks")}
-            className={`p-2 w-100 rounded-2xl transition ${
-              activeTab === "tasks"
-                ? "bg-indigo-600 text-white"
-                : "hover:bg-indigo-600 hover:text-white opacity-80"
-            }`}
-          >
-            Tasks
-          </button>
-
-          <button
-            onClick={() => setActiveTab("members")}
-            className={`p-2 w-100 rounded-2xl transition ${
-              activeTab === "members"
-                ? "bg-indigo-600 text-white"
-                : "hover:bg-indigo-600 hover:text-white opacity-80"
-            }`}
-          >
-            Members
-          </button>
-          <button
-            onClick={() => setActiveTab("details")}
-            className={`p-2 w-100 rounded-2xl transition ${
-              activeTab === "details"
-                ? "bg-green-500 text-white"
-                : "hover:bg-green-300 opacity-80"
-            }`}
-          >
-            More Details
-          </button>
-        </div>
-
-        <div className="p-4 mb-6 border rounded-xl shadow">
-          {activeTab === "tasks" && <TasksComponent />}
-          {activeTab === "members" && <MembersComponent />}
-          {activeTab === "details" && <MoreDetails />}
-        </div>
-      </div>
-
-      {/* Chat button */}
-      <ChatButton conversationId={id} conversationType={"project"} />
-
-      {/* ------------------ Modals ------------------ */}
-
-      {/* Edit Project Modal */}
-      {isProjectModalOpen && (
-        <div className="fixed inset-0 flex items-center justify-center z-50">
-          <div
-            className="absolute inset-0 bg-black opacity-30 backdrop-blur-sm"
-            onClick={() => setIsProjectModalOpen(false)}
-          />
-          <div className="relative bg-white rounded-2xl shadow-lg p-6 w-full max-w-md z-10">
-            <button
-              onClick={() => setIsProjectModalOpen(false)}
-              className="absolute top-3 right-3 text-gray-500 hover:text-gray-700"
+      {/* REGULAR MODALS */}
+      {[isProjectModalOpen, isMemberModalOpen, isTaskModalOpen].map(
+        (open, i) =>
+          open && (
+            <div
+              key={i}
+              className="fixed inset-0 flex items-center justify-center z-50 px-4"
             >
-              ✕
-            </button>
-            <UpdateProject
-              onClose={() => setIsProjectModalOpen(false)}
-              projectId={project._id}
-              existingData={project}
-              onProjectUpdated={(updatedProject) =>
-                setProject({ ...project, ...updatedProject })
-              }
-            />
-          </div>
-        </div>
+              {/* Backdrop */}
+              <div className="absolute inset-0 bg-black/70 backdrop-blur-md" />
+
+              {/* Wrapper */}
+              <div className="relative w-full max-w-md p-[1px] rounded-3xl bg-gradient-to-br from-purple-500/20 via-pink-500/10 to-purple-500/20 shadow-[0_0_50px_rgba(168,85,247,0.15)]">
+                {/* Inner */}
+                <div className="relative bg-[#0b0b17] border border-white/10 rounded-3xl p-4 max-h-[95vh] overflow-x-hidden overflow-y-auto">
+                  {/* Glow */}
+                  <div className="absolute -top-24 -right-24 w-48 h-48 bg-purple-500/10 blur-3xl rounded-full" />
+
+                  {/* Close */}
+                  <button
+                    onClick={() => {
+                      setIsProjectModalOpen(false);
+                      setIsMemberModalOpen(false);
+                      setIsTaskModalOpen(false);
+                    }}
+                    className="absolute top-4 right-4 text-gray-500 hover:text-white transition z-20"
+                  >
+                    ✕
+                  </button>
+
+                  <div className="relative z-10">
+                    {isProjectModalOpen && (
+                      <UpdateProject
+                        onClose={() => setIsProjectModalOpen(false)}
+                        projectId={project._id}
+                        existingData={project}
+                        onProjectUpdated={(updated) =>
+                          setProject({
+                            ...project,
+                            ...updated,
+                          })
+                        }
+                      />
+                    )}
+
+                    {isMemberModalOpen && (
+                      <AddMember
+                        projectId={project._id}
+                        onClose={() => setIsMemberModalOpen(false)}
+                        onMemberAdded={(updatedMembers) =>
+                          setProject({
+                            ...project,
+                            members: updatedMembers,
+                          })
+                        }
+                      />
+                    )}
+
+                    {isTaskModalOpen && (
+                      <CreateTask
+                        projectId={project._id}
+                        members={project.members}
+                        onClose={() => setIsTaskModalOpen(false)}
+                        onTaskCreated={(task) =>
+                          setTasks((prev) => [...prev, task])
+                        }
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ),
       )}
 
-      {/* Add Member Modal */}
-      {isMemberModalOpen && (
-        <div className="fixed inset-0 flex items-center justify-center z-50">
-          <div
-            className="absolute inset-0 bg-black opacity-30 backdrop-blur-sm"
-            onClick={() => setIsMemberModalOpen(false)}
-          />
-          <div className="relative bg-white rounded-2xl shadow-lg p-6 w-full max-w-md z-10">
-            <button
-              onClick={() => setIsMemberModalOpen(false)}
-              className="absolute top-3 right-3 text-gray-500 hover:text-gray-700"
-            >
-              ✕
-            </button>
-            <AddMember
-              projectId={project._id}
-              onClose={() => setIsMemberModalOpen(false)}
-              onMemberAdded={(updatedMembers) =>
-                setProject({ ...project, members: updatedMembers })
-              }
-            />
-          </div>
-        </div>
-      )}
+      {/* DELETE MODALS */}
+      {(isDeleteModalOpen || isTaskDeleteOpen) && (
+        <div className="fixed inset-0 flex items-center justify-center z-50 px-4">
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-md" />
 
-      {/* Delete Member Modal */}
-      {isDeleteModalOpen && (
-        <div className="fixed inset-0 flex items-center justify-center z-50">
-          <div
-            className="absolute inset-0 bg-black opacity-30 backdrop-blur-sm"
-            onClick={() => setIsDeleteModalOpen(false)}
-          />
-          <div className="relative bg-white rounded-2xl shadow-lg p-6 w-full max-w-md z-10">
-            <button
-              onClick={() => setIsDeleteModalOpen(false)}
-              className="absolute top-3 right-3 text-gray-500 hover:text-gray-700"
-            >
-              ✕
-            </button>
-            <ConfirmRemoveMember
-              memberName={selectedMember?.name}
-              onClose={() => setIsDeleteModalOpen(false)}
-              onConfirm={handleRemoveMember}
-            />
-          </div>
-        </div>
-      )}
+          {/* Danger Card */}
+          <div className="relative w-full max-w-md p-[1px] rounded-3xl bg-gradient-to-br from-red-500/20 via-pink-500/10 to-red-500/20 shadow-[0_0_50px_rgba(239,68,68,0.18)] animate-in fade-in zoom-in-95 duration-200">
+            <div className="relative overflow-hidden bg-[#0b0b17] border border-white/10 rounded-3xl p-6">
+              {/* Glow */}
+              <div className="absolute -top-24 -right-24 w-48 h-48 bg-red-500/15 blur-3xl rounded-full" />
 
-      {/* Create Task Modal */}
-      {isTaskModalOpen && (
-        <div className="fixed inset-0 flex items-center justify-center z-50">
-          <div
-            className="absolute inset-0 bg-black opacity-30 backdrop-blur-sm"
-            onClick={() => setIsTaskModalOpen(false)}
-          />
-          <div className="relative bg-white rounded-2xl shadow-lg p-6 w-full max-w-md z-10 max-h-[95vh] overflow-y-auto">
-            <button
-              onClick={() => setIsTaskModalOpen(false)}
-              className="absolute top-3 right-3 text-gray-500 hover:text-gray-700"
-            >
-              ✕
-            </button>
-            <CreateTask
-              projectId={project._id}
-              members={project.members}
-              onClose={() => setIsTaskModalOpen(false)}
-              onTaskCreated={(task) => {
-                setTasks((prevTasks) => [...prevTasks, task]);
-              }}
-            />
-          </div>
-        </div>
-      )}
+              <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-pink-500/10 blur-3xl rounded-full" />
 
-      {/* Delete Task Modal */}
-      {isTaskDeleteOpen && (
-        <div className="fixed inset-0 flex items-center justify-center z-50">
-          <div
-            className="absolute inset-0 bg-black opacity-30 backdrop-blur-sm"
-            onClick={() => setTaskDeleteOpen(false)}
-          />
-          <div className="relative bg-white rounded-2xl shadow-lg p-6 w-full max-w-md z-10">
-            <button
-              onClick={() => setTaskDeleteOpen(false)}
-              className="absolute top-3 right-3 text-gray-500 hover:text-gray-700"
-            >
-              ✕
-            </button>
-            <ConfirmTaskDelete
-              onClose={() => setTaskDeleteOpen(false)}
-              onConfirm={handleDeleteTask}
-            />
+              {/* Close */}
+              <button
+                onClick={() => {
+                  setIsDeleteModalOpen(false);
+                  setTaskDeleteOpen(false);
+                }}
+                className="absolute top-4 right-4 z-20 text-gray-500 hover:text-white transition"
+              >
+                ✕
+              </button>
+
+              <div className="relative z-10">
+                {isDeleteModalOpen && (
+                  <ConfirmRemoveMember
+                    memberName={selectedMember?.name}
+                    onClose={() => setIsDeleteModalOpen(false)}
+                    onConfirm={handleRemoveMember}
+                  />
+                )}
+
+                {isTaskDeleteOpen && (
+                  <ConfirmTaskDelete
+                    onClose={() => setTaskDeleteOpen(false)}
+                    onConfirm={handleDeleteTask}
+                  />
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}

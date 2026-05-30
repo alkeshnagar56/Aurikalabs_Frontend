@@ -1,9 +1,9 @@
 // src/utils/socket.js
 import { io } from "socket.io-client";
 
-// 🔹 Read URL from env (adjust for your setup)
+// comment below url line to deploy and uncomment next line
 // const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:5000";
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL;
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "https://aurikalabs-backend.onrender.com";
 
 
 let socket = null;
@@ -13,15 +13,11 @@ let socket = null;
  */
 export function getSocket() {
     console.log(SOCKET_URL);
-    
+
     if (!socket) {
         socket = io(SOCKET_URL, {
             withCredentials: true,
-            auth: {
-                // Attach token for backend authentication middleware
-                token: localStorage.getItem("token"),
-            },
-            transports: ["websocket"],
+            transports: ["websocket", "polling"]
         });
 
         socket.on("connect", () => {

@@ -20,7 +20,7 @@ function App() {
     const Profile = async () => {
       try {
         const res = await fetchUserProfile();
-
+        console.log(res.data,"user data")
         setUser(res.data);
       } catch (err) {
         if (err.response?.data?.message !== "Unauthorized access") {

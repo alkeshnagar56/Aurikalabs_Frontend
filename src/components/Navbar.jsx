@@ -116,8 +116,16 @@ const Navbar = () => {
                   onClick={() => setMenuOpen(true)}
                   className="group relative"
                 >
-                  <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-purple-500 via-pink-500 to-purple-600 flex items-center justify-center text-white font-semibold shadow-lg shadow-purple-500/20 border border-white/10 group-hover:scale-105 transition-all duration-300">
-                    {user.name?.charAt(0).toUpperCase()}
+                  <div className="w-11 h-11 rounded-2xl overflow-hidden bg-gradient-to-br from-purple-500 via-pink-500 to-purple-600 flex items-center justify-center text-white font-semibold shadow-lg shadow-purple-500/20 border border-white/10 group-hover:scale-105 transition-all duration-300">
+                    {user?.avatar ? (
+                      <img
+                        src={user.avatar}
+                        alt={`${user?.name}'s avatar`}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      user?.name?.charAt(0)?.toUpperCase() || "U"
+                    )}
                   </div>
 
                   {/* Online Dot */}
@@ -145,8 +153,16 @@ const Navbar = () => {
               </div>
             ) : (
               <button onClick={() => setMenuOpen(true)} className="relative">
-                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-purple-500 via-pink-500 to-purple-600 flex items-center justify-center text-white font-semibold border border-white/10">
-                  {user.name?.charAt(0).toUpperCase()}
+                <div className="w-11 h-11 rounded-2xl overflow-hidden bg-gradient-to-br from-purple-500 via-pink-500 to-purple-600 flex items-center justify-center text-white font-semibold border border-white/10">
+                  {user?.avatar ? (
+                    <img
+                      src={user.avatar}
+                      alt={`${user?.name}'s avatar`}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    user?.name?.charAt(0)?.toUpperCase() || "U"
+                  )}
                 </div>
 
                 <div className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-green-400 border-2 border-[#0b0b17]" />
@@ -178,8 +194,16 @@ const Navbar = () => {
                 <div className="flex items-center gap-4">
                   {/* Avatar */}
                   <div className="relative">
-                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-purple-500 via-pink-500 to-purple-600 flex items-center justify-center text-white text-xl font-bold shadow-lg shadow-purple-500/20">
-                      {user.name?.charAt(0).toUpperCase()}
+                    <div className="w-14 h-14 rounded-2xl overflow-hidden bg-gradient-to-br from-purple-500 via-pink-500 to-purple-600 flex items-center justify-center text-white text-xl font-bold shadow-lg shadow-purple-500/20">
+                      {user?.avatar ? (
+                        <img
+                          src={user.avatar}
+                          alt={`${user?.name}'s avatar`}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        user?.name?.charAt(0)?.toUpperCase() || "U"
+                      )}
                     </div>
 
                     <div className="absolute bottom-0 right-0 w-4 h-4 rounded-full bg-green-400 border-4 border-[#0b0b17]" />

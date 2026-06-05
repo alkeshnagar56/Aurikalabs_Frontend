@@ -83,8 +83,18 @@ const Profile = () => {
           {/* Header */}
           <div className="relative z-10 text-center">
             {/* Avatar */}
-            <div className="relative w-28 h-28 mx-auto rounded-full bg-gradient-to-br from-purple-500 via-pink-500 to-purple-600 flex items-center justify-center text-4xl font-bold shadow-lg shadow-purple-500/30">
-              {user.name?.charAt(0).toUpperCase()}
+            <div className="relative w-28 h-28 mx-auto">
+              <div className="w-full h-full rounded-full overflow-hidden bg-gradient-to-br from-purple-500 via-pink-500 to-purple-600 flex items-center justify-center text-4xl font-bold shadow-lg shadow-purple-500/30">
+                {user?.avatar ? (
+                  <img
+                    src={user.avatar}
+                    alt={`${user?.name}'s avatar`}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  user?.name?.charAt(0)?.toUpperCase() || "U"
+                )}
+              </div>
 
               <div className="absolute bottom-1 right-1 w-5 h-5 rounded-full bg-green-400 border-4 border-[#0b0b17]" />
             </div>
